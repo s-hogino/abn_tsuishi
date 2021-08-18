@@ -21,8 +21,8 @@ import torchvision.datasets as datasets
 import models.cifar as models
 
 from utils import Bar, Logger, AverageMeter, accuracy, mkdir_p, savefig
-
-
+from tqdm import tqdm
+from collections import OrderedDict
 model_names = sorted(name for name in models.__dict__
     if name.islower() and not name.startswith("__")
     and callable(models.__dict__[name]))
@@ -236,14 +236,15 @@ def train(trainloader, model, criterion, optimizer, epoch, use_cuda):
     top1 = AverageMeter()
     top5 = AverageMeter()
     end = time.time()
-
-    bar = Bar('Processing', max=len(trainloader))
-    for batch_idx, (inputs, targets) in enumerate(trainloader):
+ 
+    #bar = Bar('Processing', max=len(trainloader))
+    bar = tqdm(trainloader)
+    for batch_idx, (inputs, targets) in enumerate(bar):
         # measure data loading time
         data_time.update(time.time() - end)
 
         if use_cuda:
-            inputs, targets = inputs.cuda(), targets.cuda(async=True)
+            inputs, targets = inputs.cuda(), targets.cuda()
         inputs, targets = torch.autograd.Variable(inputs), torch.autograd.Variable(targets)
 
         # compute output
@@ -254,9 +255,9 @@ def train(trainloader, model, criterion, optimizer, epoch, use_cuda):
 
         # measure accuracy and record loss
         prec1, prec5 = accuracy(per_outputs.data, targets.data, topk=(1, 5))
-        losses.update(loss.data[0], inputs.size(0))
-        top1.update(prec1[0], inputs.size(0))
-        top5.update(prec5[0], inputs.size(0))
+        losses.update(loss.data.item(), inputs.size(0))
+        top1.update(prec1.item(), inputs.size(0))
+        top5.update(prec5.item(), inputs.size(0))
 
         # compute gradient and do SGD step
         optimizer.zero_grad()
@@ -266,8 +267,11 @@ def train(trainloader, model, criterion, optimizer, epoch, use_cuda):
         # measure elapsed time
         batch_time.update(time.time() - end)
         end = time.time()
-
+        
         # plot progress
+        bar.set_description("({batch}/{size})".format(batch=batch_idx+1,size=len(trainloader)))
+        bar.set_postfix(OrderedDict(data=data_time.avg,bt=batch_time.avg,loss=losses.avg,top1=top1.avg,top5=top5.avg))
+        """
         bar.suffix  = '({batch}/{size}) Data: {data:.3f}s | Batch: {bt:.3f}s | Total: {total:} | ETA: {eta:} | Loss: {loss:.4f} | top1: {top1: .4f} | top5: {top5: .4f}'.format(
                     batch=batch_idx + 1,
                     size=len(trainloader),
@@ -280,7 +284,8 @@ def train(trainloader, model, criterion, optimizer, epoch, use_cuda):
                     top5=top5.avg,
                     )
         bar.next()
-    bar.finish()
+        """
+    #bar.finish()
     return (losses.avg, top1.avg)
 
 def test(testloader, model, criterion, epoch, use_cuda):
@@ -296,21 +301,24 @@ def test(testloader, model, criterion, epoch, use_cuda):
     model.eval()
 
     end = time.time()
-    bar = Bar('Processing', max=len(testloader))
-    for batch_idx, (inputs, targets) in enumerate(testloader):
+    bar = tqdm(testloader)
+    #bar = Bar('Processing', max=len(testloader))
+    for batch_idx, (inputs, targets) in enumerate(bar):
         # measure data loading time
         data_time.update(time.time() - end)
 
         if use_cuda:
             inputs, targets = inputs.cuda(), targets.cuda()
-        inputs, targets = torch.autograd.Variable(inputs, volatile=True), torch.autograd.Variable(targets)
+        
+        with torch.no_grad():
+            inputs, targets = torch.autograd.Variable(inputs), torch.autograd.Variable(targets)
 
         # compute output
         _, outputs, attention = model(inputs)
         loss = criterion(outputs, targets)
 
 
-        print(attention.min(), attention.max())
+        #print(attention.min(), attention.max())
         """
         np_inputs = inputs.numpy()
         np_att = attention.numpy()
@@ -320,15 +328,18 @@ def test(testloader, model, criterion, epoch, use_cuda):
 
         # measure accuracy and record loss
         prec1, prec5 = accuracy(outputs.data, targets.data, topk=(1, 5))
-        losses.update(loss.data[0], inputs.size(0))
-        top1.update(prec1[0], inputs.size(0))
-        top5.update(prec5[0], inputs.size(0))
+        losses.update(loss.data.item(), inputs.size(0))
+        top1.update(prec1.item(), inputs.size(0))
+        top5.update(prec5.item(), inputs.size(0))
 
         # measure elapsed time
         batch_time.update(time.time() - end)
         end = time.time()
 
         # plot progress
+        bar.set_description("({batch}/{size})".format(batch=batch_idx+1,size=len(testloader)))
+        bar.set_postfix(OrderedDict(data=data_time.avg,bt=batch_time.avg,loss=losses.avg,top1=top1.avg,top5=top5.avg))
+        """
         bar.suffix  = '({batch}/{size}) Data: {data:.3f}s | Batch: {bt:.3f}s | Total: {total:} | ETA: {eta:} | Loss: {loss:.4f} | top1: {top1: .4f} | top5: {top5: .4f}'.format(
                     batch=batch_idx + 1,
                     size=len(testloader),
@@ -341,7 +352,8 @@ def test(testloader, model, criterion, epoch, use_cuda):
                     top5=top5.avg,
                     )
         bar.next()
-    bar.finish()
+        """
+    #bar.finish()
     return (losses.avg, top1.avg)
 
 def save_checkpoint(state, is_best, checkpoint='checkpoint', filename='checkpoint.pth.tar'):
